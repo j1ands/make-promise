@@ -5,26 +5,75 @@ Promises Workshop: build the pledge.js deferral-style promise library
 
 function $Promise()
 {
-
+    this.handlerGroups = [];
+    this.updateCbs =[];
+    this.state = 'pending';
+    this.value;
 }
 
-$Promise.prototype.state = 'pending';
-$Promise.prototype.value;
+
+  //its setting it as class varibales instead of on objects.
+// $Promise.prototype.handlerGroups = [];
+// $Promise.prototype.updateCbs = [];
+
+$Promise.prototype.then = function (success, error, update) {
+
+        if (typeof success !== 'function') {
+          success = false;
+        }
+
+        if ( typeof error !== 'function') {
+          error = false;
+        };
+
+        var already = false;
+
+        this.handlerGroups.forEach(function(el){
+          if (el.onResolve === success){
+            already = true;
+          }
+        });
+
+        if (!already){
+          this.handlerGroups.push({onResolve: success, onReject: error});
+
+          if ( typeof update === 'function') {
+            this.updateCbs.push(update);
+          };
+        }
+
+        this.handle();
+}
+
+$Promise.prototype.handle = function() {
+
+        if (this.state === 'resolved' && this.handlerGroups.length) {
+          var value = this.value;
+          this.handlerGroups.forEach(function(el){
+            el.onResolve(value);
+          });
+          //this.handlerGroups[this.handlerGroups.length-1].onResolve(this.value);
+        }
+}
+
 
 function Deferral()
 {
 	this.$promise = new $Promise;
 }
 
+
 //Why is the constructor version unique and not this?
 //Deferral.prototype.$promise = new $Promise;
 
 Deferral.prototype.resolve = function(data)
 {
+
 	if(this.$promise.state === 'pending')
 	{
 		this.$promise.value = data;
 		this.$promise.state = 'resolved';
+    this.$promise.handle();
 	}
 }
 
