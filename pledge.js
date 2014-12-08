@@ -102,16 +102,26 @@ $Promise.prototype.handle = function(one) {
           //var returnedValue = el.onResolve(value);
           try
           {
-           returnedValue = el.onResolve(value);
+             returnedValue = el.onResolve(value);
           }
           catch(err)
           {
             el.forwarder.reject(err);
           }
 
-          if(typeof returnedValue == Promise)
+          //console.log(typeof returnedValue);
+
+          if(returnedValue instanceof $Promise)
           {
-            //el.forwarder.resolve(returnedValue.resolve())
+            returnedValue.then(
+              function success(data)
+              {
+                el.forwarder.resolve(data);
+              },
+              function failed(error)
+              {
+                el.forwarder.reject(error);
+              });
           }
           else
           {
@@ -135,7 +145,23 @@ $Promise.prototype.handle = function(one) {
           {
             el.forwarder.reject(err);
           }
-          el.forwarder.resolve(returnedValue);
+
+          if(returnedValue instanceof $Promise)
+          {
+            returnedValue.then(
+              function success(data)
+              {
+                el.forwarder.resolve(data);
+              },
+              function failed(error)
+              {
+                el.forwarder.reject(error);
+              });            
+          }
+          else
+          {
+            el.forwarder.resolve(returnedValue);
+          }
           this.handlerGroups.shift();
       }
     }
