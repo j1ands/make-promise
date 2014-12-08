@@ -18,12 +18,12 @@ function $Promise()
 
 $Promise.prototype.then = function (success, error, update) {
 
-        if (typeof success !== 'function') 
+        if (typeof success !== 'function')
         {
           success = false;
         }
 
-        if ( typeof error !== 'function') 
+        if ( typeof error !== 'function')
         {
           error = false;
         }
@@ -33,7 +33,7 @@ $Promise.prototype.then = function (success, error, update) {
         //refractor possibility?
         this.handlerGroups.forEach(function(el)
         {
-          
+
           if (el.onResolve === success && el.onReject === error)
           {
             already = true;
@@ -43,9 +43,13 @@ $Promise.prototype.then = function (success, error, update) {
 
         if (!already || update !== undefined)
         {
-          this.handlerGroups.push({onResolve: success, onReject: error});
+          this.handlerGroups.push({
+                                   onResolve: success,
+                                   onReject: error,
+                                   forwarder: new Deferral()
+                                 });
 
-          if ( typeof update === 'function') 
+          if ( typeof update === 'function')
           {
             this.updateCbs.push(update);
           }
@@ -53,6 +57,11 @@ $Promise.prototype.then = function (success, error, update) {
         }
 
         this.handle(true);
+
+        if (this.handlerGroups.length)
+        {
+          return this.handlerGroups[this.handlerGroups.length - 1].forwarder.$promise;
+        }
 }
 
 $Promise.prototype.handle = function(one) {
@@ -61,7 +70,7 @@ $Promise.prototype.handle = function(one) {
 
   if(one)
   {
-    if (this.state === 'resolved' && this.handlerGroups.length) 
+    if (this.state === 'resolved' && this.handlerGroups.length)
     {
       if(handleFunc.onResolve)
       {
@@ -77,27 +86,37 @@ $Promise.prototype.handle = function(one) {
         handleFunc.onReject(this.value);
         this.handlerGroups.pop();
       }
-    }          
+    }
   }
 
   else
   {
     var el = this.handlerGroups[0];
-    if (this.state === 'resolved' && this.handlerGroups.length) 
-    {  
+    if (this.state === 'resolved' && this.handlerGroups.length)
+    {
       var value = this.value;
-      // this.handlerGroups.forEach(function(el)
-      // {
-      //   if(el.onResolve)
-      //   {
-      //     el.onResolve(value);
-      //   }
-      // });
 
       while(this.handlerGroups.length && el.onResolve)
       {
           el = this.handlerGroups[0];
-          el.onResolve(value);
+          //var returnedValue = el.onResolve(value);
+          try
+          {
+           returnedValue = el.onResolve(value);
+          }
+          catch(err)
+          {
+            el.forwarder.reject(err);
+          }
+
+          if(typeof returnedValue == Promise)
+          {
+            //el.forwarder.resolve(returnedValue.resolve())
+          }
+          else
+          {
+            el.forwarder.resolve(returnedValue);
+          }
           this.handlerGroups.shift();
       }
     }
@@ -108,9 +127,17 @@ $Promise.prototype.handle = function(one) {
       while(this.handlerGroups.length && el.onReject)
       {
           el = this.handlerGroups[0];
-          el.onReject(value);
+          try
+          {
+            returnedValue = el.onReject(value);
+          }
+          catch(err)
+          {
+            el.forwarder.reject(err);
+          }
+          el.forwarder.resolve(returnedValue);
           this.handlerGroups.shift();
-      }    
+      }
     }
     else if(this.state === 'pending'  && this.updateCbs.length)
     {
@@ -126,7 +153,7 @@ $Promise.prototype.handle = function(one) {
 
 $Promise.prototype.catch = function(errorFunc)
 {
-  this.then(null, errorFunc);
+    return this.then(null, errorFunc);
 }
 
 
@@ -147,7 +174,17 @@ Deferral.prototype.resolve = function(data)
 		this.$promise.value = data;
 		this.$promise.state = 'resolved';
     this.$promise.handle(false);
-	}
+    //console.log(returned);
+    var curGroups = this.$promise.handlerGroups;
+    if (curGroups.length)
+    {
+      curGroups.forEach(function(group)
+      {
+        var nextPromise = group.forwarder;
+        nextPromise.resolve(data);
+      });
+    }
+  }
 }
 
 Deferral.prototype.reject = function(reason)
@@ -157,6 +194,15 @@ Deferral.prototype.reject = function(reason)
 		this.$promise.value = reason;
 		this.$promise.state = 'rejected';
     this.$promise.handle(false);
+    var curGroups = this.$promise.handlerGroups;
+    if (curGroups.length)
+    {
+      curGroups.forEach(function(group)
+      {
+        var nextPromise = group.forwarder;
+        nextPromise.reject(reason);
+      });
+    }
 	}
 }
 
