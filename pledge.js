@@ -18,42 +18,115 @@ function $Promise()
 
 $Promise.prototype.then = function (success, error, update) {
 
-        if (typeof success !== 'function') {
+        if (typeof success !== 'function') 
+        {
           success = false;
         }
 
-        if ( typeof error !== 'function') {
+        if ( typeof error !== 'function') 
+        {
           error = false;
-        };
+        }
 
         var already = false;
 
-        this.handlerGroups.forEach(function(el){
-          if (el.onResolve === success){
+        //refractor possibility?
+        this.handlerGroups.forEach(function(el)
+        {
+          
+          if (el.onResolve === success && el.onReject === error)
+          {
             already = true;
           }
+
         });
 
-        if (!already){
+        if (!already || update !== undefined)
+        {
           this.handlerGroups.push({onResolve: success, onReject: error});
 
-          if ( typeof update === 'function') {
+          if ( typeof update === 'function') 
+          {
             this.updateCbs.push(update);
-          };
+          }
+
         }
 
-        this.handle();
+        this.handle(true);
 }
 
-$Promise.prototype.handle = function() {
+$Promise.prototype.handle = function(one) {
 
-        if (this.state === 'resolved' && this.handlerGroups.length) {
-          var value = this.value;
-          this.handlerGroups.forEach(function(el){
-            el.onResolve(value);
-          });
-          //this.handlerGroups[this.handlerGroups.length-1].onResolve(this.value);
-        }
+  var handleFunc = this.handlerGroups[this.handlerGroups.length - 1];
+
+  if(one)
+  {
+    if (this.state === 'resolved' && this.handlerGroups.length) 
+    {
+      if(handleFunc.onResolve)
+      {
+        handleFunc.onResolve(this.value);
+        this.handlerGroups.pop();
+      }
+    }
+
+    else if(this.state === 'rejected' && this.handlerGroups.length)
+    {
+      if(handleFunc.onReject)
+      {
+        handleFunc.onReject(this.value);
+        this.handlerGroups.pop();
+      }
+    }          
+  }
+
+  else
+  {
+    var el = this.handlerGroups[0];
+    if (this.state === 'resolved' && this.handlerGroups.length) 
+    {  
+      var value = this.value;
+      // this.handlerGroups.forEach(function(el)
+      // {
+      //   if(el.onResolve)
+      //   {
+      //     el.onResolve(value);
+      //   }
+      // });
+
+      while(this.handlerGroups.length && el.onResolve)
+      {
+          el = this.handlerGroups[0];
+          el.onResolve(value);
+          this.handlerGroups.shift();
+      }
+    }
+    else if (this.state === 'rejected' && this.handlerGroups.length)
+    {
+      var value = this.value;
+
+      while(this.handlerGroups.length && el.onReject)
+      {
+          el = this.handlerGroups[0];
+          el.onReject(value);
+          this.handlerGroups.shift();
+      }    
+    }
+    else if(this.state === 'pending'  && this.updateCbs.length)
+    {
+      var value = arguments[1];
+
+      this.updateCbs.forEach(function(ele)
+      {
+        ele(value);
+      });
+    }
+  }
+}
+
+$Promise.prototype.catch = function(errorFunc)
+{
+  this.then(null, errorFunc);
 }
 
 
@@ -73,7 +146,7 @@ Deferral.prototype.resolve = function(data)
 	{
 		this.$promise.value = data;
 		this.$promise.state = 'resolved';
-    this.$promise.handle();
+    this.$promise.handle(false);
 	}
 }
 
@@ -83,7 +156,17 @@ Deferral.prototype.reject = function(reason)
 	{
 		this.$promise.value = reason;
 		this.$promise.state = 'rejected';
+    this.$promise.handle(false);
 	}
+}
+
+Deferral.prototype.notify = function(info)
+{
+  if(this.$promise.state === 'pending')
+  {
+    //this.$promise.value = info;
+    this.$promise.handle(false, info);
+  }
 }
 
 function defer()
